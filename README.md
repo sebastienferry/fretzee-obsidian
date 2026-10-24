@@ -13,8 +13,8 @@ The same plugin optionally sends selected notes or folders to Fretzee as private
    `styles.css`. Keep the accompanying license files.
 2. Restart Obsidian, open **Settings → Community plugins**, allow community
    plugins if needed, and enable **Fretzee**.
-3. To update, disable Fretzee, replace its plugin folder with the new `dist/fretzee`
-   folder, restart Obsidian, and enable it again. Your notes and source files are
+3. To update, disable Fretzee, copy the new package files into the existing plugin
+   folder while preserving `data.json`, restart Obsidian, and enable it again. Your notes and source files are
    unchanged by this process.
 
 The first public release targets **Obsidian desktop 1.14.5 or newer**. Mobile
@@ -24,7 +24,7 @@ Obsidian approval. See [submission preparation](docs/submission.md).
 
 ## Send documents to Fretzee
 
-Publishing support is introduced by the **0.5.0 feature branch** and is not included in the earlier 0.4.1 release. Build its package with `npm ci && npm run check && npm run package`, then update your existing `.obsidian/plugins/fretzee/` folder using `dist/fretzee-0.5.0.zip`. Keep the manifest, main bundle, stylesheet and license notices together. Do not install the superseded standalone Fretzee Publish prototype.
+Publishing support is introduced by the **0.5.0 feature branch** and is not included in the earlier 0.4.1 release. Build its package with `npm ci && npm run check && npm run package`, then copy its files into your existing `.obsidian/plugins/fretzee/` folder using `dist/fretzee-0.5.0.zip`. Preserve any existing `data.json` so connection settings and source identity survive updates. Keep the manifest, main bundle, stylesheet and license notices together. Do not install the superseded standalone Fretzee Publish prototype.
 
 1. Use a Studio server implementing the document-publication API. Open **Documents → Connect Obsidian**, create a named upload token and copy it once.
 2. In **Settings → Fretzee**, configure the site origin and click **Save site**. HTTPS is required except for loopback HTTP development sites.
