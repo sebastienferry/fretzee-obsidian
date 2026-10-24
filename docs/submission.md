@@ -25,7 +25,7 @@ No Studio account, server, API key or network connection is required. The plugin
 
 ## Preparation verification
 
-The clean lockfile build passes TypeScript, the official Obsidian ESLint rules
+The source repository and release 0.4.1 are public. The clean lockfile build passes TypeScript, the official Obsidian ESLint rules
 with zero warnings, 47 automated tests and strict OpenSpec validation. GitHub CI
 also passes. Native Obsidian 1.14.5 verification covers the four-column sheet,
 minimal zoomed Guitar Pro excerpt, explicit title, aligned chord progression,

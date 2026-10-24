@@ -4,7 +4,7 @@
 - [x] 2. Preserve license notices in standard assets and verify packaging.
 - [x] 3. Document compatibility and prepare CI, release automation and submission materials.
 - [x] 4. Verify tests, build, specs and host rendering; inspect publication contents.
-- [ ] 5. Publish the source repository and release on the user's GitHub account and verify assets.
+- [x] 5. Publish the source repository and release on the user's GitHub account and verify assets.
 
 ## Verification evidence
 
@@ -14,3 +14,5 @@
 - Public source inspection excludes private vault content, source music and credentials. Concurrent document-publishing development remains outside this isolated release.
 - Source repository: https://github.com/sebastienferry/fretzee-obsidian (public, GitHub recognizes MIT).
 - Official directory login is required before the owner can complete policy acceptance and submission; no approval is claimed.
+- Published release: https://github.com/sebastienferry/fretzee-obsidian/releases/tag/0.4.1. Both CI and Release workflows completed successfully.
+- Downloaded all public standard assets and verified SHA-256 equality with the clean local build; the ZIP passes integrity checks and contains those same assets and license files.
