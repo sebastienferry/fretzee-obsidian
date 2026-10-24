@@ -46,4 +46,3 @@ export function parseConfiguration(source: string): FretboardOptions {
   }
   return config;
 }
-

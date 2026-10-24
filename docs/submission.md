@@ -23,6 +23,15 @@ Choose a Guitar Pro file from the current vault, select a track and an inclusive
 
 No Studio account, server, API key or network connection is required. The plugin reads referenced music files through the vault API and does not alter them. There is no telemetry, advertising, playback or automatic plugin updating. The initial public release targets desktop; mobile support has not been verified.
 
+## Preparation verification
+
+The clean lockfile build passes TypeScript, the official Obsidian ESLint rules
+with zero warnings, 47 automated tests and strict OpenSpec validation. GitHub CI
+also passes. Native Obsidian 1.14.5 verification covers the four-column sheet,
+minimal zoomed Guitar Pro excerpt, explicit title, aligned chord progression,
+Reading view, Live Preview and picker opening/cancellation. Mobile is outside
+the initial release scope. These checks do not replace the directory's review.
+
 ## Submission procedure
 
 1. Sign in at https://community.obsidian.md with the owner's Obsidian account.
