@@ -4,6 +4,11 @@ All notable user-facing changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Next]
 
+### Added
+
+- Send selected notes or folders to Fretzee as private drafts from the existing plugin, with an outgoing-file confirmation and optional site connection.
+- Keep upload credentials in Obsidian SecretStorage while offline musical rendering remains available without an account.
+
 ## [0.4.1] - 2026-10-24
 
 ### Changed

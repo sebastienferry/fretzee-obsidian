@@ -18,3 +18,9 @@ Window types do not include the host's global DOM helpers; resolve them through
 the owning document's window with the public API types. Test those helpers in the
 host stub. Community installs only three standard assets, so retain dependency
 notices within main.js as well as separate ZIP license files.
+
+## One plugin for rendering and sending (2026-10-24)
+
+The owner explicitly chose to integrate document sending into the existing Fretzee plugin, under plugin ID `fretzee`, instead of maintaining `fretzee-obsidian-publish` as a second installation. Publishing configuration is optional, loaded lazily and namespaced under `publishing`; preserve other saved settings. Upload credentials stay in SecretStorage with an origin binding. Register renderers synchronously and never require network access or publishing configuration for offline rendering.
+
+The source repository was initialized during this work. Integration was moved to its own `feat/document-publishing` worktree, and the original checkout was restored to its initial commit baseline for the separate release preparation. The existing minimum Obsidian version is 1.14.5; use searchable setting definitions instead of deprecated display callbacks.

@@ -2,7 +2,9 @@
 
 Render Fretzee JSON diagrams, composite sheets, chord progressions and selected Guitar Pro excerpts directly in your
 Obsidian notes. Rendering works offline: the diagram engine, AlphaTab and its
-notation font are bundled. No Studio account, server, API key, or CDN is needed.
+notation font are bundled. Rendering needs no Studio account, server, API key, or CDN.
+
+The same plugin optionally sends selected notes or folders to Fretzee as private drafts. Publishing requires a compatible Studio server and an upload token; it is independent of offline rendering. No second plugin is required.
 
 ## Install or update
 
@@ -19,6 +21,21 @@ The first public release targets **Obsidian desktop 1.14.5 or newer**. Mobile
 support is not advertised until it has been verified on devices. The plugin is
 not yet listed in the Community directory; a GitHub release does not imply
 Obsidian approval. See [submission preparation](docs/submission.md).
+
+## Send documents to Fretzee
+
+Publishing support is introduced by the **0.5.0 feature branch** and is not included in the earlier 0.4.1 release. Build its package with `npm ci && npm run check && npm run package`, then update your existing `.obsidian/plugins/fretzee/` folder using `dist/fretzee-0.5.0.zip`. Keep the manifest, main bundle, stylesheet and license notices together. Do not install the superseded standalone Fretzee Publish prototype.
+
+1. Use a Studio server implementing the document-publication API. Open **Documents → Connect Obsidian**, create a named upload token and copy it once.
+2. In **Settings → Fretzee**, configure the site origin and click **Save site**. HTTPS is required except for loopback HTTP development sites.
+3. Enter the token and click **Save token**. Credentials stay in Obsidian SecretStorage, bound to that site; plugin data.json contains only non-secret publishing settings. Tokens expire after 30 days and are revoked on the site.
+4. Run **Fretzee: Send current note as a private draft**, or right-click a note/folder and choose **Send to Fretzee as a private draft**.
+5. Inspect the complete outgoing-file list before confirming. Hidden files are excluded. Linked Markdown notes outside the selected scope are not followed; directly referenced attachments can come from elsewhere in the vault.
+6. Review the private draft on the website, then publish for everyone or selected existing accounts. Subsequent sends leave the published version unchanged until you publish explicitly again.
+
+This is explicit one-way sending. There is no automatic background synchronization, remote publication, vault editing or remote deletion. A renamed source creates a separate publication identity. Uploads preserve original bytes and are limited to 200 files, 10 MiB per file and 20 MiB total. Preview hides frontmatter, but source downloads preserve it.
+
+Studio's initial reader supports ordinary Markdown, wikilinks and raster image embeds. The original Fretzee blocks, Guitar Pro rendering, chord grids and sheets continue to render inside Obsidian; the document website does not yet render those plugin blocks or provide media players. Native Obsidian acceptance testing remains necessary before releasing this integration.
 
 ## Insert a Guitar Pro excerpt
 
