@@ -1,0 +1,32 @@
+name: Release
+on:
+  push:
+    tags: ['[0-9]*.[0-9]*.[0-9]*']
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Verify exact version tag
+        run: node --input-type=module -e "import fs from 'node:fs'; const m=JSON.parse(fs.readFileSync('manifest.json')); if(process.env.GITHUB_REF_NAME!==m.version) throw new Error('Tag must match manifest version exactly');"
+      - run: npm ci
+      - run: npm run check
+      - run: npm run spec:validate
+      - run: npm run package
+      - name: Publish standard plugin assets and full archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          dist/fretzee/main.js dist/fretzee/manifest.json dist/fretzee/styles.css
+          "dist/fretzee-$GITHUB_REF_NAME.zip"
+          --verify-tag --title "Fretzee $GITHUB_REF_NAME"
+          --notes-file "docs/releases/$GITHUB_REF_NAME.md"
