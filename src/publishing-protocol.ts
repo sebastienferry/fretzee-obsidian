@@ -146,7 +146,7 @@ export async function sendDraft(
 ): Promise<{ id: string; reviewPath: string }> {
   const site = siteOrigin(origin);
   if (!/^fup_[a-f0-9]{32}$/u.test(token))
-    throw new Error('Configure a valid Fretzee upload token.');
+    throw new Error('Connect this device in Fretzee settings.');
   const response = await transport({
     url: `${site}/api/v1/documents/import`,
     method: 'POST',
@@ -159,7 +159,7 @@ export async function sendDraft(
   if (response.status !== 201)
     throw new Error(
       response.status === 401
-        ? 'The upload token is expired, revoked or invalid.'
+        ? 'Device access expired or was revoked. Connect again in Fretzee settings.'
         : response.status === 429
           ? 'Too many sends. Wait a moment before retrying.'
           : `Fretzee rejected the draft (HTTP ${response.status}).`,
@@ -176,7 +176,7 @@ export async function sendDraft(
 
 /** Binds the credential inside SecretStorage, independently of synced plugin settings. */
 export function storedToken(raw: string | null, origin: string): string {
-  if (!raw) throw new Error('Configure an upload token in plugin settings.');
+  if (!raw) throw new Error('Connect this device in Fretzee settings.');
   const credential = JSON.parse(raw) as { origin?: unknown; token?: unknown };
   if (
     credential.origin !== siteOrigin(origin) ||
@@ -184,7 +184,7 @@ export function storedToken(raw: string | null, origin: string): string {
     !/^fup_[a-f0-9]{32}$/u.test(credential.token)
   )
     throw new Error(
-      'Save an upload token for this Fretzee site in plugin settings.',
+      'Connect this device to this Fretzee site in plugin settings.',
     );
   return credential.token;
 }

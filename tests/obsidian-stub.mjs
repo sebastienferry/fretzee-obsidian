@@ -9,6 +9,8 @@ export class Plugin {
   registerEvent(event) { this.events.push(event); }
   async loadData() { return globalThis.fretzeePluginData ?? null; }
   async saveData(data) { globalThis.fretzeePluginData = data; (globalThis.fretzeeDataWrites ??= []).push(data); }
+  protocols = new Map();
+  registerObsidianProtocolHandler(action, handler) { this.protocols.set(action, handler); }
   processors = new Map();
   commands = [];
   registerMarkdownCodeBlockProcessor(language, handler) { this.processors.set(language, handler); }

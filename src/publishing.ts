@@ -13,6 +13,7 @@ import {
   type SettingDefinitionItem,
 } from 'obsidian';
 import { documentWindow } from './dom';
+import { DeviceConnection } from './device-connection';
 import {
   prepareUpload,
   sendDraft,
@@ -85,6 +86,20 @@ class ConfirmSend extends Modal {
   }
 }
 
+/** Display the request verification code while the external browser handles login. */
+class ConnectionPrompt extends Modal {
+  constructor(app: App, private readonly origin: string, private readonly code: string, private readonly cancelled: () => void) { super(app); }
+  onOpen(): void {
+    this.setTitle('Connect this device');
+    const doc = documentWindow(this.contentEl.ownerDocument);
+    const text = doc.createEl('p'); text.textContent = `Approve Obsidian on ${this.origin}. Check that the website shows the same verification code:`;
+    const code = doc.createEl('strong'); code.textContent = this.code;
+    const cancel = doc.createEl('button'); cancel.type = 'button'; cancel.textContent = 'Cancel connection'; cancel.onclick = () => this.close();
+    this.contentEl.replaceChildren(text, code, cancel);
+  }
+  onClose(): void { this.contentEl.replaceChildren(); this.cancelled(); }
+}
+
 /** Optional publication transport owned by the existing offline-rendering plugin. */
 export class DocumentPublishing {
   private config?: PublishingConfig;
@@ -92,10 +107,23 @@ export class DocumentPublishing {
   private disposed = false;
   private preparing = false;
   private confirmation?: ConfirmSend;
-  constructor(private readonly plugin: Plugin) {}
+  private readonly connection: DeviceConnection;
+  private connectionPrompt?: ConnectionPrompt;
+  private completingConnection = false;
+  constructor(private readonly plugin: Plugin) {
+    this.connection = new DeviceConnection(
+      async () => (await this.settings()).site,
+      (origin, token, isCurrent) => this.storeCredential(origin, token, isCurrent),
+      async options => { const response = await requestUrl({ ...options, throw: false }); return { status: response.status, json: response.json as unknown }; },
+      () => documentWindow(this.plugin.app.workspace.containerEl.ownerDocument).crypto,
+    );
+  }
 
   /** Register UI synchronously without credentials, data writes or network requests. */
   register(): void {
+    this.plugin.registerObsidianProtocolHandler('fretzee-connect', params => {
+      void this.finishConnection(params).catch((error: unknown) => { if (!this.disposed) new Notice(errorText(error)); });
+    });
     this.plugin.addSettingTab(
       new PublishingSettings(this.plugin.app, this.plugin, this),
     );
@@ -178,14 +206,17 @@ export class DocumentPublishing {
   /** Save a site origin without moving or exposing existing credentials. */
   async saveSite(value: string): Promise<void> {
     const config = await this.settings();
+    this.cancelConnection();
     config.site = value.trim() ? siteOrigin(value.trim()) : '';
     await this.save();
   }
   /** Bind a credential inside SecretStorage, outside synced settings. */
   async saveToken(value: string): Promise<void> {
+    await this.storeCredential(siteOrigin((await this.settings()).site), value.trim());
+  }
+  private async storeCredential(origin: string, token: string, isCurrent: () => boolean = () => true): Promise<void> {
     const config = await this.settings();
-    const origin = siteOrigin(config.site);
-    const token = value.trim();
+    if (this.disposed || !isCurrent() || siteOrigin(config.site) !== origin) throw new Error('Connection cancelled or site changed.');
     if (!/^fup_[a-f0-9]{32}$/u.test(token))
       throw new Error('Enter a valid upload token.');
     this.plugin.app.secretStorage.setSecret(
@@ -197,11 +228,33 @@ export class DocumentPublishing {
   }
   /** Forgetting a local credential does not revoke its server-side counterpart. */
   async forgetToken(): Promise<void> {
+    this.cancelConnection();
     const config = await this.settings();
     this.plugin.app.secretStorage.setSecret(this.secretId(config), '');
     config.tokenOrigin = '';
     await this.save();
   }
+  /** Start browser authorization for the configured URL; account passwords stay on the site. */
+  async connectDevice(): Promise<void> {
+    if (this.disposed) return;
+    this.cancelConnection();
+    const config = await this.settings();
+    const origin = siteOrigin(config.site);
+    const request = await this.connection.start(origin, this.plugin.app.vault.getName());
+    if (this.disposed || siteOrigin(config.site) !== origin) { this.cancelConnection(); return; }
+    this.connectionPrompt = new ConnectionPrompt(this.plugin.app, origin, request.displayCode, () => {
+      if (!this.completingConnection) this.connection.cancel();
+      this.connectionPrompt = undefined;
+    });
+    this.connectionPrompt.open(); this.open(request.url);
+  }
+  /** Validate the callback before storing an upload-only credential. */
+  async finishConnection(params: Record<string, string>): Promise<void> {
+    const connected = await this.connection.complete(params);
+    this.completingConnection = true; this.connectionPrompt?.close(); this.completingConnection = false;
+    if (!this.disposed) new Notice(connected ? 'Device connected.' : 'Device connection cancelled.');
+  }
+  private cancelConnection(): void { this.connection.cancel(); this.connectionPrompt?.close(); this.connectionPrompt = undefined; }
   private open(url: string): void {
     if (!this.disposed)
       documentWindow(this.plugin.app.workspace.containerEl.ownerDocument).open(
@@ -224,7 +277,7 @@ export class DocumentPublishing {
       const origin = siteOrigin(config.site);
       if (config.tokenOrigin !== origin)
         throw new Error(
-          'Save an upload token for this site in publishing settings.',
+          'Connect this device to the site in Fretzee settings.',
         );
       storedToken(
         this.plugin.app.secretStorage.getSecret(this.secretId(config)),
@@ -317,6 +370,7 @@ export class DocumentPublishing {
   /** Invalidate pending preparation and close confirmations when disabled. */
   dispose(): void {
     this.disposed = true;
+    this.cancelConnection();
     this.confirmation?.close();
     this.confirmation = undefined;
   }
@@ -331,14 +385,14 @@ class PublishingSettings extends PluginSettingTab {
       desc: 'Offline rendering needs no account. Configure an HTTPS origin, or loopback HTTP for local development.',
     },
     {
-      kind: 'token',
-      name: 'Upload token',
-      desc: 'Create a token in the site document library. Stored only in Obsidian SecretStorage; tokens send private drafts but cannot publish.',
+      kind: 'connect',
+      name: 'Connect this device',
+      desc: 'Sign in on the configured site and approve Obsidian in your browser. No token to copy; access is saved in SecretStorage and can only send private drafts.',
     },
     {
       kind: 'forget',
-      name: 'Forget upload token',
-      desc: 'Revoke it on the site as well if it should stop working.',
+      name: 'Disconnect this vault',
+      desc: 'Remove the local credential. Revoke this device on the site to invalidate its access as well.',
     },
   ] as const;
   constructor(
@@ -358,7 +412,7 @@ class PublishingSettings extends PluginSettingTab {
   }
   private renderRow(
     setting: Setting,
-    kind: 'site' | 'token' | 'forget',
+    kind: 'site' | 'connect' | 'forget',
   ): () => void {
     let active = true;
     if (kind === 'site') {
@@ -392,39 +446,17 @@ class PublishingSettings extends PluginSettingTab {
         .catch((error: unknown) => {
           if (active) new Notice(errorText(error));
         });
-    } else if (kind === 'token') {
-      let credential = '';
-      let input: HTMLInputElement;
-      setting
-        .addText((text) => {
-          input = text.inputEl;
-          input.type = 'password';
-          input.autocomplete = 'off';
-          text.onChange((value) => {
-            credential = value;
-          });
-        })
-        .addButton((button) =>
-          button.setButtonText('Save token').onClick(() => {
-            void this.publishing
-              .saveToken(credential)
-              .then(() => {
-                credential = '';
-                if (active) input.value = '';
-                new Notice('Upload token saved.');
-              })
-              .catch((error: unknown) => {
-                new Notice(errorText(error));
-              });
-          }),
-        );
+    } else if (kind === 'connect') {
+      setting.addButton(button => button.setButtonText('Connect this device').onClick(() => {
+        void this.publishing.connectDevice().catch((error: unknown) => { new Notice(errorText(error)); });
+      }));
     } else {
       setting.addButton((button) =>
-        button.setButtonText('Forget token').onClick(() => {
+        button.setButtonText('Disconnect locally').onClick(() => {
           void this.publishing
             .forgetToken()
             .then(() => {
-              new Notice('Upload token forgotten on this device.');
+              new Notice('This vault is disconnected.');
             })
             .catch((error: unknown) => {
               new Notice(errorText(error));

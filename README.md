@@ -4,7 +4,7 @@ Render Fretzee JSON diagrams, composite sheets, chord progressions and selected 
 Obsidian notes. Rendering works offline: the diagram engine, AlphaTab and its
 notation font are bundled. Rendering needs no Studio account, server, API key, or CDN.
 
-The same plugin optionally sends selected notes or folders to Fretzee as private drafts. Publishing requires a compatible Studio server and an upload token; it is independent of offline rendering. No second plugin is required.
+The same plugin optionally sends selected notes or folders to Fretzee as private drafts. Publishing requires a compatible Studio server and browser authorization; it is independent of offline rendering. No second plugin is required.
 
 ## Install or update
 
@@ -26,9 +26,9 @@ Obsidian approval. See [submission preparation](docs/submission.md).
 
 Publishing support is introduced by the **0.5.0 feature branch** and is not included in the earlier 0.4.1 release. Build its package with `npm ci && npm run check && npm run package`, then copy its files into your existing `.obsidian/plugins/fretzee/` folder using `dist/fretzee-0.5.0.zip`. Preserve any existing `data.json` so connection settings and source identity survive updates. Keep the manifest, main bundle, stylesheet and license notices together. Do not install the superseded standalone Fretzee Publish prototype.
 
-1. Use a Studio server implementing the document-publication API. Open **Documents → Connect Obsidian**, create a named upload token and copy it once.
-2. In **Settings → Fretzee**, configure the site origin and click **Save site**. HTTPS is required except for loopback HTTP development sites.
-3. Enter the token and click **Save token**. Credentials stay in Obsidian SecretStorage, bound to that site; plugin data.json contains only non-secret publishing settings. Tokens expire after 30 days and are revoked on the site.
+1. Use a compatible Studio server with browser device connection enabled.
+2. In **Settings → Fretzee**, enter the site origin and click **Save site**. Use the hosted site or your personal instance. HTTPS is required except for loopback HTTP development sites.
+3. Click **Connect this device**. In your external browser, sign in to that site, complete MFA if enabled, compare the verification code with Obsidian, and authorize the named device. Return to Obsidian when prompted. No token copying is needed. Access is upload-only, expires after 30 days, stays in SecretStorage and is bound to the configured site. The site's device/token list can revoke it.
 4. Run **Fretzee: Send current note as a private draft**, or right-click a note/folder and choose **Send to Fretzee as a private draft**.
 5. Inspect the complete outgoing-file list before confirming. Hidden files are excluded. Linked Markdown notes outside the selected scope are not followed; directly referenced attachments can come from elsewhere in the vault.
 6. Review the private draft on the website, then publish for everyone or selected existing accounts. Subsequent sends leave the published version unchanged until you publish explicitly again.
@@ -36,6 +36,14 @@ Publishing support is introduced by the **0.5.0 feature branch** and is not incl
 This is explicit one-way sending. There is no automatic background synchronization, remote publication, vault editing or remote deletion. A renamed source creates a separate publication identity. Uploads preserve original bytes and are limited to 200 files, 10 MiB per file and 20 MiB total. Preview hides frontmatter, but source downloads preserve it.
 
 Studio's initial reader supports ordinary Markdown, wikilinks and raster image embeds. The original Fretzee blocks, Guitar Pro rendering, chord grids and sheets continue to render inside Obsidian; the document website does not yet render those plugin blocks or provide media players. Native Obsidian acceptance testing remains necessary before releasing this integration.
+
+### Browser connection safety and compatibility
+
+Browser connection is an unreleased change on `feat/device-connection`, based on the committed 0.5.0 integration. Separate portable-note work is not included in this isolated branch. Both the new site endpoints and plugin are required; no hosted deployment or vault replacement is implied by building this branch.
+
+The connection URL includes a device/vault label, verification state and a public PKCE challenge, never a token or verifier. An expiring one-time code returns through Obsidian's registered protocol action; the plugin exchanges it over HTTPS and stores the resulting scoped credential only in SecretStorage. Changing the site, cancelling, disconnecting locally or unloading invalidates pending callbacks. **Disconnect locally** removes local access; revoke the device on the site as well to invalidate its server credential. Existing manually configured credentials remain usable.
+
+See [browser connection design](docs/adrs/0005-browser-device-connection.md).
 
 ## Insert a Guitar Pro excerpt
 
@@ -236,7 +244,7 @@ sufficient contrast for your vault's theme.
 
 Audio playback, nested sheets, external JSON files, automatic SVG file export,
 Studio ID lookups and conversion of tablature notes into fretboard diagrams are
-outside this version. The plugin implements no network requests or telemetry.
+outside this version. Offline rendering makes no network requests. Optional browser connection and confirmed private-draft sending communicate only with the configured site. There is no telemetry.
 
 ## Development
 

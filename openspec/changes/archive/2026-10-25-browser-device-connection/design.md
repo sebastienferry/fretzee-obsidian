@@ -1,0 +1,7 @@
+# Native browser connection
+
+Use an external browser and authorization-code proof-of-possession with S256 PKCE, following RFC 8252 and RFC 7636 principles. This is a scoped Fretzee connection protocol, not a general-purpose OAuth provider. The plugin holds a random verifier and state only in memory for ten minutes. The configured origin opens /connect-device with the challenge, state, vault target and a device label. Login and MFA stay entirely on the site.
+
+The site requires an active authenticated account, same-origin JSON approval and explicit confirmation. It stores only a random authorization-code hash, owner, challenge, label and a five-minute expiry. A fixed obsidian://fretzee-connect callback carries only the short-lived code and state, never an upload token or verifier. The plugin validates the active state, expiry and unchanged site, then exchanges code and verifier in a POST to the same configured origin. Atomic SQL consumption and token creation allow only one exchange. Existing 30-day upload-only tokens and owner-scoped revocation are reused.
+
+Changing URL, disconnecting or unloading cancels local pending state. No startup requests, password fields, token in URLs/logs/data.json, arbitrary callback origins or automatic uploads. Consent UI shows device name, current site, restricted scope and the request verification code. Failed or cancelled login does not grant access. Preserve manual server tokens for compatibility while the plugin's primary UI no longer asks for pasting one.

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { JSDOM } from 'jsdom';
+import { webcrypto } from 'node:crypto';
 import FretzeePlugin from '../.test-build/main.mjs';
 import { DocumentPublishing } from '../.test-build/publishing.mjs';
 import { Plugin, Setting, TFile, TFolder, installHostDom } from './obsidian-stub.mjs';
@@ -98,14 +99,17 @@ test('duplicate preparation and unload cannot send an unconfirmed package',async
   controller.dispose();assert.equal(document.querySelector('ul'),null);assert.deepEqual(globalThis.fretzeeRequests,[]);
   await controller.prepare(note);assert.equal(document.querySelector('ul'),null);
 });
-test('searchable settings UI saves site and clears the token field after saving',async()=>{
-  fixture();const plugin=new FretzeePlugin();plugin.onload();const tab=plugin.settingTabs[0];
+test('settings connect through the browser and store the returned token only in SecretStorage',async()=>{
+  const {secrets,opened}=fixture();Object.defineProperty(dom.window.crypto,'subtle',{value:webcrypto.subtle});
+  const plugin=new FretzeePlugin();plugin.onload();const tab=plugin.settingTabs[0];
   document.body.appendChild(tab.containerEl);const cleanups=tab.getSettingDefinitions().map(def=>def.render(new Setting(tab.containerEl).setName(def.name).setDesc(def.desc)));await tick();
-  const siteInput=document.querySelector('input[type="text"],input:not([type])');
-  assert.ok(siteInput);siteInput.value=origin;siteInput.dispatchEvent(new dom.window.Event('input'));
-  click('Save site');await tick();
-  const tokenInput=document.querySelector('input[type="password"]');tokenInput.value=token;tokenInput.dispatchEvent(new dom.window.Event('input'));
-  click('Save token');await tick();assert.equal(tokenInput.value,'');
-  assert.ok(!JSON.stringify(globalThis.fretzeePluginData).includes(token));
-  assert.match(globalThis.fretzeeNotices.at(-1),/token saved/);for(const cleanup of cleanups)cleanup();plugin.onunload();
+  assert.equal(document.querySelector('input[type="password"]'),null);
+  click('Connect this device');for(let i=0;i<50&&!opened.length;i++)await tick();assert.equal(globalThis.fretzeeRequests.length,0);
+  const request=new URL(opened.at(-1));assert.equal(request.origin,origin);assert.equal(request.pathname,'/connect-device');
+  globalThis.fretzeeRequestUrl=async()=>({status:201,json:{token:'fup_'+'b'.repeat(32)}});
+  const handler=plugin.protocols.get('fretzee-connect');assert.ok(handler);handler({state:request.searchParams.get('state'),code:'fda_'+'c'.repeat(32)});for(let i=0;i<50&&JSON.parse(secrets.get('fretzee-publish-vault')).token!=='fup_'+'b'.repeat(32);i++)await tick();
+  assert.equal(JSON.parse(secrets.get('fretzee-publish-vault')).token,'fup_'+'b'.repeat(32));
+  assert.ok(!JSON.stringify(globalThis.fretzeePluginData).includes('fup_'));assert.match(globalThis.fretzeeNotices.at(-1),/Device connected/);
+  assert.equal(document.querySelector('button')?.textContent==='Cancel connection',false);
+  for(const cleanup of cleanups)cleanup();plugin.onunload();
 });
