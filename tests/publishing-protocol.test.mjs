@@ -155,3 +155,16 @@ test("binary base64 conversion preserves every byte", () => {
     Buffer.from(data)
   );
 });
+
+test('a trashed main identity reports that restoration is required',async()=>{
+ await assert.rejects(sendDraft('https://dev.fretzee.com','fup_'+'a'.repeat(32),{schema:3,sourceKey:'note:12345678-1234-4234-8234-123456789abc',title:'Main',entry:'note.md',files:[]},async()=>({status:409,json:{}})),/Restore it in My Collection/);
+});
+
+
+test('legacy folder and direct attachment exports accept arbitrary types and extensionless files',async()=>{
+ const files=[note('Music/Note.md'),note('Music/backup.zip'),{path:'Music/LICENSE',name:'LICENSE',basename:'LICENSE',extension:''}];
+ const folder=await prepareUpload(source(files),{path:'Music',title:'Music',folder:true},'vault');
+ assert.deepEqual(folder.files.map(file=>file.path).sort(),['Music/LICENSE','Music/Note.md','Music/backup.zip']);
+ const direct=await prepareUpload(source([files[0]],[note('Assets/tone.vendorpreset'),files[2]]),{path:'Music/Note.md',title:'Note',folder:false},'vault');
+ assert.ok(direct.files.some(file=>file.path==='Assets/tone.vendorpreset'));assert.ok(direct.files.some(file=>file.path==='Music/LICENSE'));
+});

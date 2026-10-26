@@ -1,4 +1,4 @@
-/** Version-one upload contract; it can create private drafts only. */
+/** Versioned upload contracts create private drafts only. */
 export const LIMITS = {
   files: 200,
   fileBytes: 10 * 1024 * 1024,
@@ -9,7 +9,7 @@ export interface UploadFile {
   content: string;
 }
 export interface Upload {
-  schema: 1;
+  schema: 1 | 2 | 3;
   sourceKey: string;
   title: string;
   entry: string;
@@ -26,11 +26,6 @@ export interface Source {
   attachments(note: VaultFile): VaultFile[];
   read(file: VaultFile): Promise<ArrayBuffer>;
 }
-const supported = new Set(
-  'md markdown png jpg jpeg gif webp avif svg pdf txt json mp3 wav ogg m4a mp4 webm gp gp3 gp4 gp5 gpx musicxml mxl csv'.split(
-    ' ',
-  ),
-);
 export function safePath(raw: string): string {
   const value = raw.normalize('NFC');
   if (
@@ -48,7 +43,7 @@ export const isMarkdown = (file: VaultFile): boolean =>
 function eligible(file: VaultFile): boolean {
   try {
     safePath(file.path);
-    return supported.has(file.extension.toLowerCase());
+    return true;
   } catch {
     return false;
   }
@@ -160,6 +155,8 @@ export async function sendDraft(
     throw new Error(
       response.status === 401
         ? 'The upload token is expired, revoked or invalid.'
+        : response.status === 409
+          ? 'This document is in Studio trash. Restore it in My Collection before sending again.'
         : response.status === 429
           ? 'Too many sends. Wait a moment before retrying.'
           : `Fretzee rejected the draft (HTTP ${response.status}).`,

@@ -3,12 +3,12 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { JSDOM } from 'jsdom';
 import FretzeePlugin from '../.test-build/main.mjs';
 import { DocumentPublishing } from '../.test-build/publishing.mjs';
-import { Plugin, Setting, TFile, TFolder, installHostDom } from './obsidian-stub.mjs';
+import { Plugin, Setting, TFile, TFolder, installHostDom, parseYaml, stringifyYaml } from './obsidian-stub.mjs';
 
 let dom;
 const token = 'fup_' + 'a'.repeat(32);
 const origin = 'https://dev.fretzee.com';
-const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+const tick = () => new Promise(resolve => setTimeout(resolve, 30));
 const command = (plugin, id) => plugin.commands.find(item => item.id === id);
 const click = text => { const button = [...document.querySelectorAll('button')].find(item => item.textContent === text); assert.ok(button, `Expected ${text}`); button.click(); };
 function fixture() {
@@ -18,6 +18,10 @@ function fixture() {
   const hidden = new TFile('.obsidian/private.json');
   const secrets = new Map([['fretzee-publish-vault',JSON.stringify({origin,token})]]);
   const files = new Map([note,other,image,hidden].map(file => [file.path.normalize('NFC'), file]));
+  const bodies = new Map([[note.path, '# Café\n\n![Image](../Assets/image.png)\n\n[[Other/Private]]'], [other.path, '# Private']]);
+  const originalBody = bodies.get(note.path);
+  bodies.set(note.path, '---\nfretzee-type: document\n---\n' + originalBody);
+  const originalText = bodies.get(note.path);
   const callbacks = new Map();
   const opened = [];
   dom.window.open = url => { opened.push(url); };
@@ -25,11 +29,12 @@ function fixture() {
   globalThis.fretzeeTestApp = {
     workspace: { containerEl:document.body, getActiveFile:()=>note, on:(event,callback)=>{callbacks.set(event,callback);return {event};} },
     secretStorage: {getSecret:id=>secrets.get(id)||null,setSecret:(id,value)=>secrets.set(id,value)},
-    vault: { getFiles:()=>[note,other,image,hidden], getName:()=> 'Vault', getFileByPath:path=>files.get(path), readBinary: async file => new TextEncoder().encode(`ORIGINAL ${file.path}`).buffer },
-    metadataCache: {getFileCache:()=>({links:[{link:other.path}],embeds:[{link:image.path},{link:hidden.path}]}),getFirstLinkpathDest:path=>files.get(path)},
+    vault: { getFiles:()=>[...files.values()], getName:()=> 'Vault', getFileByPath:path=>files.get(path), read: async file => bodies.get(file.path) || '', readBinary: async file => new TextEncoder().encode(bodies.get(file.path) || `ORIGINAL ${file.path}`).buffer },
+    fileManager: {processFrontMatter: async (file, update) => { const text = bodies.get(file.path); const match = /^---\n([\s\S]*?)\n---\n/.exec(text); const metadata = match ? parseYaml(match[1]) : {}; update(metadata); bodies.set(file.path, '---\n' + stringifyYaml(metadata).trimEnd() + '\n---\n' + (match ? text.slice(match[0].length) : text)); }},
+    metadataCache: {getFileCache:file=>({frontmatter:parseYaml(/^---\n([\s\S]*?)\n---\n/.exec(bodies.get(file.path)||'')?.[1]||'')||{},links:[{link:other.path}],embeds:[{link:image.path},{link:hidden.path}]}),getFirstLinkpathDest:(path, from) => files.get(path) || files.get(new URL(path, 'https://vault/' + from).pathname.slice(1))},
   };
   globalThis.fretzeeRequestUrl = async () => {const id='doc_'+'b'.repeat(32);return {status:201,json:{id,reviewPath:`/documents/${id}`}};};
-  return {note,other,secrets,callbacks,opened};
+  return {note,other,secrets,callbacks,opened,bodies,originalBody,originalText,files};
 }
 beforeEach(()=>{dom=new JSDOM('<!doctype html><body></body>',{url:'https://obsidian.test'});installHostDom(dom);globalThis.document=dom.window.document;globalThis.fretzeeNotices=[];globalThis.fretzeeRequests=[];globalThis.fretzeeDataWrites=[];});
 afterEach(()=>{dom.window.close();for(const key of ['document','fretzeeTestApp','fretzeePluginData','fretzeeRequestUrl','fretzeeRequests','fretzeeDataWrites'])delete globalThis[key];});
@@ -59,18 +64,19 @@ test('settings preserve renderer data and store credentials only in SecretStorag
   assert.equal(globalThis.fretzeePluginData.publishing.tokenOrigin,'');
 });
 test('note confirmation precedes transport and canonical vault lookups preserve the source',async()=>{
-  const {note,opened}=fixture();const plugin=new Plugin();const controller=new DocumentPublishing(plugin);controller.register();
+  const {opened}=fixture();const plugin=new Plugin();const controller=new DocumentPublishing(plugin);controller.register();
   command(plugin,'send-active-note').checkCallback(false);await tick();
   assert.deepEqual(globalThis.fretzeeRequests,[]);
+  for(let i=0;i<100&&!document.querySelector('li');i++)await new Promise(resolve=>setTimeout(resolve,5));
   const paths=[...document.querySelectorAll('li')].map(item=>item.textContent);
-  assert.deepEqual(paths,['Assets/image.png','Music/Café.md']);
+  assert.equal(paths.length, 1);assert.match(paths[0], /Music\/Cafe/);assert.match(paths[0], /Assets\/image.png/);
   click('Send private draft');await tick();
   assert.equal(globalThis.fretzeeRequests.length,1);
   const request=globalThis.fretzeeRequests[0];assert.equal(request.url,origin+'/api/v1/documents/import');
   assert.equal(request.headers.Authorization,'Bearer '+token);
   const upload=JSON.parse(request.body);
-  assert.equal(upload.sourceKey,'vault:Music/Café.md');assert.equal(upload.entry,'Music/Café.md');
-  assert.equal(Buffer.from(upload.files.find(file=>file.path===upload.entry).content,'base64').toString(),`ORIGINAL ${note.path}`);
+  assert.match(upload.sourceKey,/^note:[0-9a-f-]{36}$/);assert.equal(upload.entry,'note.md');
+  assert.match(Buffer.from(upload.files.find(file=>file.path===upload.entry).content,'base64').toString(),/assets\/image.png/);
   assert.deepEqual(opened,[origin+'/documents/doc_'+'b'.repeat(32)]);
   assert.equal(document.querySelector('li'),null);controller.dispose();
 });
@@ -79,7 +85,7 @@ test('folder context menu keeps folder scope and cancellation sends nothing',asy
   let action;
   callbacks.get('file-menu')({addItem:callback=>{const item={setTitle:()=>item,setIcon:()=>item,onClick:callback=>{action=callback;return item;}};callback(item);}},new TFolder('Music'));
   assert.ok(action);action();await tick();
-  assert.ok(document.body.textContent.includes('Music/Café.md'));
+  assert.match(document.body.textContent,/Music\/Cafe/);
   click('Cancel');assert.deepEqual(globalThis.fretzeeRequests,[]);
   controller.dispose();
 });
@@ -108,4 +114,59 @@ test('searchable settings UI saves site and clears the token field after saving'
   click('Save token');await tick();assert.equal(tokenInput.value,'');
   assert.ok(!JSON.stringify(globalThis.fretzeePluginData).includes(token));
   assert.match(globalThis.fretzeeNotices.at(-1),/token saved/);for(const cleanup of cleanups)cleanup();plugin.onunload();
+});
+
+test('cancel leaves frontmatter untouched and confirmation records only per-origin acknowledgements',async()=>{
+ const f=fixture();const controller=new DocumentPublishing(new Plugin());
+ await controller.prepare(f.note);click('Cancel');assert.equal(f.bodies.get(f.note.path),f.originalText);
+ await controller.prepare(f.note);click('Send private draft');await tick();
+ const match=/id: ([a-f0-9-]+)/.exec(f.bodies.get(f.note.path));assert.ok(match);
+ assert.ok(f.bodies.get(f.note.path).endsWith(f.originalBody));
+ const state=globalThis.fretzeePluginData.publishing.sendState[origin][match[1]];
+ assert.equal(state.documentId,'doc_'+'b'.repeat(32));assert.match(state.fingerprint,/^[a-f0-9]{64}$/);
+ assert.ok(!JSON.stringify(state).includes(token));controller.dispose();
+});
+test('changed dependencies require a fresh review before frontmatter writes or transport',async()=>{
+ const f=fixture();const controller=new DocumentPublishing(new Plugin());await controller.prepare(f.note);
+ f.bodies.set('Assets/image.png','CHANGED');click('Send private draft');await tick();
+ assert.equal(globalThis.fretzeeRequests.length,0);assert.equal(f.bodies.get(f.note.path),f.originalText);
+ assert.match(globalThis.fretzeeNotices.at(-1),/changed/);controller.dispose();
+});
+test('duplicate selected identities fail, while unrelated duplicate notes do not block sending',async()=>{
+ const f=fixture();const id='12345678-1234-4234-8234-123456789abc';
+ f.bodies.set(f.note.path,'---\nfretzee-type: document\nfretzee:\n  id: '+id+'\n---\n'+f.originalBody);
+ f.bodies.set(f.other.path,'---\nfretzee:\n  id: '+id+'\n---\n# Other');
+ const controller=new DocumentPublishing(new Plugin());await controller.prepare(f.note);
+ assert.equal(document.querySelector('ul'),null);assert.match(globalThis.fretzeeNotices.at(-1),/Duplicate/);
+ f.bodies.set(f.note.path,f.originalText);
+ const copy=new TFile('Other/Copy.md');f.files.set(copy.path,copy);f.bodies.set(copy.path,f.bodies.get(f.other.path));
+ await controller.prepare(f.note);assert.ok(document.querySelector('ul'));click('Cancel');controller.dispose();
+});
+test('failed container sends retain the main identity and can retry after explicit review',async()=>{
+ const f=fixture();let fail=true;
+ globalThis.fretzeeRequestUrl=async()=>fail?{status:503,json:{error:'Unavailable'}}:{status:201,json:{id:'doc_'+'b'.repeat(32),reviewPath:'/documents/doc_'+'b'.repeat(32)}};
+ const controller=new DocumentPublishing(new Plugin());await controller.prepare(f.note);click('Send private draft');await tick();
+ assert.match(f.bodies.get(f.note.path),/fretzee-id:/);assert.match(f.bodies.get(f.note.path),/fretzee-type: document/);
+ const first=JSON.parse(globalThis.fretzeeRequests[0].body);assert.equal(first.schema,3);
+ fail=false;click('Send private draft');await tick();
+ const repeated=JSON.parse(globalThis.fretzeeRequests[1].body);assert.equal(first.sourceKey,repeated.sourceKey);
+ assert.equal(Object.keys(globalThis.fretzeePluginData.publishing.sendState[origin]).length,1);controller.dispose();
+});
+test('sending lyrics selects the marked editorial note and includes Markdown as a resource',async()=>{
+ const f=fixture();const lyrics=new TFile('Music/Lyrics.md');f.files.set(lyrics.path,lyrics);f.bodies.set(lyrics.path,'# Lyrics resource');
+ const controller=new DocumentPublishing(new Plugin());await controller.prepare(lyrics);
+ assert.match(document.querySelector('li').textContent,/Cafe/);assert.match(document.querySelector('li').textContent,/Lyrics.md/);
+ click('Send private draft');await tick();
+ const upload=JSON.parse(globalThis.fretzeeRequests[0].body);assert.equal(upload.schema,3);assert.equal(upload.title,'Café');
+ assert.ok(upload.files.some(file=>file.path==='assets/Lyrics.md'));assert.equal(f.bodies.get(lyrics.path),'# Lyrics resource');controller.dispose();
+});
+test('missing main-note offer and outgoing confirmation can both be cancelled without metadata writes',async()=>{
+ const f=fixture();f.bodies.set(f.note.path,f.originalBody);const controller=new DocumentPublishing(new Plugin());
+ let pending=controller.prepare(f.note);await tick();assert.match(document.body.textContent,/No main note is defined/);click('Cancel');await pending;
+ assert.equal(f.bodies.get(f.note.path),f.originalBody);assert.equal(globalThis.fretzeeRequests.length,0);
+ pending=controller.prepare(f.note);await tick();click('Use as main note and review');await pending;
+ assert.match(document.body.textContent,/flat fretzee-type/);click('Cancel');assert.equal(f.bodies.get(f.note.path),f.originalBody);
+ pending=controller.prepare(f.note);await tick();click('Use as main note and review');await pending;click('Send private draft');await tick();
+ assert.match(f.bodies.get(f.note.path),/fretzee-type: document/);assert.match(f.bodies.get(f.note.path),/fretzee-id:/);
+ assert.ok(!f.bodies.get(f.note.path).includes('fretzee:\n'));controller.dispose();
 });

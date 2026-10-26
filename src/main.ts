@@ -16,7 +16,7 @@ export default class FretzeePlugin extends Plugin {
       this.registerMarkdownCodeBlockProcessor(language, (source, element) => { renderCodeBlock(source, element); });
     }
     this.registerMarkdownCodeBlockProcessor('tablature', (source, element, context) => {
-      context.addChild(new TablatureView(element, this.app, source));
+      context.addChild(new TablatureView(element, this.app, source, context.sourcePath));
     });
     this.registerMarkdownCodeBlockProcessor('chords', renderChords);
     this.addCommand({

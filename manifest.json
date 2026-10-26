@@ -1,7 +1,7 @@
 {
   "id": "fretzee",
   "name": "Fretzee",
-  "version": "0.5.0",
+  "version": "0.7.0",
   "minAppVersion": "1.14.5",
   "description": "Render musical diagrams and tablature offline, and send selected notes to Fretzee as private drafts.",
   "author": "S\u00e9bastien Ferry",

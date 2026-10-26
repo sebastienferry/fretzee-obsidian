@@ -40,3 +40,7 @@ Use Obsidian's public path normalization and searchable settings definitions, co
 * Publishing requires a compatible Studio deployment and an upload token.
 * The initial website reader does not render the musical plugin blocks.
 * Native desktop acceptance testing remains required before release; mobile support is unchanged.
+
+## Follow-up decision
+
+ADR-0004 introduces stable note identity and portable dependencies in the same plugin. It supersedes path-based publication identity for new sends while retaining offline rendering and the existing credential boundary.

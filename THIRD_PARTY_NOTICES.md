@@ -22,3 +22,8 @@ Open Font License 1.1. Its license is included in `licenses/Bravura-OFL.txt`.
 
 Obsidian provides the plugin host API at runtime. Obsidian itself is not
 bundled or licensed by this plugin.
+
+The note exporter bundles mdast-util-from-markdown 2.0.2 and its Markdown parser
+dependencies under the MIT License. Exact notices from the locked production
+dependency graph are embedded in `main.js` and included in the ZIP as
+`licenses/Markdown-MIT.txt`. Source: https://github.com/syntax-tree/mdast-util-from-markdown.

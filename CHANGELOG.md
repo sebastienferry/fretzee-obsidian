@@ -4,7 +4,22 @@ All notable user-facing changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Next]
 
+### Fixed
+
+- Document resources accept any file type, including files without an extension.
+
+- HX and Helix presets (`.hx`, `.hlx`) can accompany a document without blocking its upload.
+
 ### Added
+
+- Choose one editorial main note per directory using flat Properties fields, and send lyrics Markdown and other files as attached resources.
+- Sending a resource automatically selects the directory's existing main note; missing main notes trigger a choice before outgoing review.
+- Preserve existing publication IDs when moving from nested identity metadata to flat properties.
+
+- Send an editorial main note and its directory resources with portable references and stable identity across moves and renames.
+- Find sent documents in My Collection and retain their chosen folder on subsequent sends.
+- Keep per-site acknowledgements and retry unchanged content without duplicate revisions.
+- Resolve Guitar Pro files relative to their note.
 
 - Send selected notes or folders to Fretzee as private drafts from the existing plugin, with an outgoing-file confirmation and optional site connection.
 - Keep upload credentials in Obsidian SecretStorage while offline musical rendering remains available without an account.

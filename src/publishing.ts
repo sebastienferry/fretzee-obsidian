@@ -12,14 +12,14 @@ import {
   type TAbstractFile,
   type SettingDefinitionItem,
 } from 'obsidian';
+import { resolveMainNote } from './root-note';
 import { documentWindow } from './dom';
+import { noteMetadata, prepareNote, type NoteSource, type PreparedNote } from './note-bundle';
 import {
-  prepareUpload,
+  LIMITS,
   sendDraft,
   siteOrigin,
   storedToken,
-  type Source,
-  type Upload,
 } from './publishing-protocol';
 
 interface PublishingConfig {
@@ -34,11 +34,32 @@ const record = (value: unknown): Record<string, unknown> =>
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : 'The document operation failed.';
 
+/** Choose a main note without changing vault metadata before final send confirmation. */
+class ChooseMainNote extends Modal {
+  constructor(app: App, private readonly candidates: { path: string; name: string }[], private readonly preferred: string, private readonly choose: (path: string | null) => void) { super(app); }
+  onOpen(): void {
+    this.setTitle('Define the Fretzee main note');
+    const doc = documentWindow(this.contentEl.ownerDocument);
+    const description = doc.createEl('p');
+    description.textContent = 'No main note is defined for this directory. Choose its editorial note. Other files, including lyrics, will be attached resources. The final send confirmation saves its document type and stable identity.';
+    const label = doc.createEl('label'); label.textContent = 'Main note';
+    const select = doc.createEl('select');
+    for (const file of this.candidates) { const option = doc.createEl('option'); option.value = file.path; option.textContent = file.name; select.appendChild(option); }
+    select.value = this.preferred; label.appendChild(select);
+    const actions = doc.createDiv(); actions.className = 'fretzee-picker-actions';
+    const cancel = doc.createEl('button'); cancel.textContent = 'Cancel'; cancel.onclick = () => this.close();
+    const review = doc.createEl('button'); review.textContent = 'Use as main note and review'; review.className = 'mod-cta';
+    review.onclick = () => { this.choose(select.value); this.close(); };
+    actions.append(cancel, review); this.contentEl.replaceChildren(description, label, actions);
+  }
+  onClose(): void { this.contentEl.replaceChildren(); this.choose(null); }
+}
+
 /** Explicit file-list confirmation; closing it never starts a request. */
 class ConfirmSend extends Modal {
   constructor(
     app: App,
-    private readonly upload: Upload,
+    private readonly notes: PreparedNote[],
     private readonly submit: () => Promise<void>,
     private readonly closed: () => void,
   ) {
@@ -48,11 +69,11 @@ class ConfirmSend extends Modal {
     this.setTitle('Send a private draft');
     const doc = documentWindow(this.contentEl.ownerDocument);
     const explanation = doc.createEl('p');
-    explanation.textContent = `${this.upload.title}: ${this.upload.files.length} files. Review the complete outgoing list. Nothing is published automatically.`;
+    explanation.textContent = `${this.notes.length} document container, ${this.notes.reduce((count, note) => count + note.upload.files.length, 0)} files. The main note is the editorial document; all other files are resources. Confirming saves flat fretzee-type: document and fretzee-id properties. Nothing is published automatically.`;
     const list = doc.createEl('ul');
-    for (const file of this.upload.files) {
+    for (const note of this.notes) {
       const item = doc.createEl('li');
-      item.textContent = file.path;
+      item.textContent = note.file.path + (note.dependencies.length ? ' — ' + note.dependencies.map(file => file.source).join(', ') : '');
       list.appendChild(item);
     }
     const actions = doc.createDiv();
@@ -92,6 +113,7 @@ export class DocumentPublishing {
   private disposed = false;
   private preparing = false;
   private confirmation?: ConfirmSend;
+  private rootPrompt?: ChooseMainNote;
   constructor(private readonly plugin: Plugin) {}
 
   /** Register UI synchronously without credentials, data writes or network requests. */
@@ -101,7 +123,7 @@ export class DocumentPublishing {
     );
     this.plugin.addCommand({
       id: 'send-active-note',
-      name: 'Send current note as a private draft',
+      name: 'Send current note’s document as a private draft',
       checkCallback: (checking) => {
         const file = this.plugin.app.workspace.getActiveFile();
         if (!file || !/^(md|markdown)$/iu.test(file.extension)) return false;
@@ -114,7 +136,7 @@ export class DocumentPublishing {
       name: 'Open documents',
       callback: () => {
         void this.settings()
-          .then((config) => this.open(siteOrigin(config.site) + '/documents'))
+          .then((config) => this.open(siteOrigin(config.site) + '/collection?type=documents'))
           .catch((error: unknown) => {
             new Notice(errorText(error));
           });
@@ -124,7 +146,7 @@ export class DocumentPublishing {
       this.plugin.app.workspace.on('file-menu', (menu, file) => {
         if (
           file instanceof TFolder ||
-          (file instanceof TFile && /^(md|markdown)$/iu.test(file.extension))
+          file instanceof TFile
         ) {
           menu.addItem((item) =>
             item
@@ -231,46 +253,65 @@ export class DocumentPublishing {
         origin,
       );
       const app = this.plugin.app;
-      const source: Source = {
+      const source: NoteSource = {
         files: () => app.vault.getFiles(),
-        attachments: (note) => {
-          const file = app.vault.getFileByPath(normalizePath(note.path));
-          if (!file) return [];
-          const cache = app.metadataCache.getFileCache(file);
-          return [...(cache?.links || []), ...(cache?.embeds || [])]
-            .map((link) =>
-              app.metadataCache.getFirstLinkpathDest(
-                link.link.split('#')[0] || '',
-                normalizePath(note.path),
-              ),
-            )
-            .filter((file): file is TFile => file instanceof TFile);
+        text: (file) => {
+          const entry = app.vault.getFileByPath(normalizePath(file.path));
+          if (!entry) throw new Error(`Note unavailable: ${file.path}`);
+          return app.vault.read(entry);
         },
         read: (file) => {
           const entry = app.vault.getFileByPath(normalizePath(file.path));
           if (!entry) throw new Error(`File unavailable: ${file.path}`);
           return app.vault.readBinary(entry);
         },
-      };
-      const upload = await prepareUpload(
-        source,
-        {
-          path: selected.path,
-          title:
-            selected instanceof TFile
-              ? selected.basename
-              : selected.name || app.vault.getName(),
-          folder: selected instanceof TFolder,
+        resolve: (reference, note) => app.metadataCache.getFirstLinkpathDest(reference, normalizePath(note.path)),
+        cachedId: (file) => {
+          const entry = app.vault.getFileByPath(normalizePath(file.path));
+          const metadata: unknown = entry ? app.metadataCache.getFileCache(entry)?.frontmatter : undefined;
+          return record(metadata)['fretzee-id'] ?? record(record(metadata).fretzee).id;
         },
-        config.vaultId,
-      );
+      };
+      const selection = await resolveMainNote(source, selected.path, selected instanceof TFolder);
+      let main = selection.main;
+      if (!main) {
+        const selectedPath = await new Promise<string | null>(resolve => {
+          this.rootPrompt = new ChooseMainNote(app, selection.candidates, selection.preferred || '', resolve);
+          this.rootPrompt.open();
+        });
+        this.rootPrompt = undefined;
+        if (!selectedPath || this.disposed) { this.preparing = false; return; }
+        main = selection.candidates.find(file => file.path === selectedPath);
+      }
+      if (!main) throw new Error('Choose a valid editorial Markdown note.');
+      const chosen = [main];
+      const ids = new Map<string, string[]>();
+      for (const file of source.files()) {
+        const identity = source.cachedId(file);
+        if (typeof identity !== 'string') continue;
+        ids.set(identity, [...(ids.get(identity) || []), normalizePath(file.path)]);
+      }
+      const notes: PreparedNote[] = [];
+      const chosenIds = new Set<string>();
+      let batchBytes = 0;
+      for (const file of chosen) {
+        const metadata = noteMetadata(await source.text(file));
+        const id = metadata.id || documentWindow(app.workspace.containerEl.ownerDocument).crypto.randomUUID();
+        const copies = (ids.get(id) || []).filter(path => path !== normalizePath(file.path));
+        if (copies.length || chosenIds.has(id)) throw new Error(`Duplicate fretzee.id in ${file.path}. Remove the ID from the copied note before sending.`);
+        chosenIds.add(id);
+        const prepared = await prepareNote(source, file, id, true);
+        batchBytes += prepared.upload.files.reduce((size, entry) => size + Math.floor(entry.content.length * 3 / 4) - (entry.content.endsWith('==') ? 2 : entry.content.endsWith('=') ? 1 : 0), 0);
+        if (batchBytes > LIMITS.totalBytes) throw new Error('Select a smaller batch: notes and dependencies exceed 20 MiB.');
+        notes.push(prepared);
+      }
       if (this.disposed) {
         this.preparing = false;
         return;
       }
       this.confirmation = new ConfirmSend(
         app,
-        upload,
+        notes,
         async () => {
           if (
             this.disposed ||
@@ -280,28 +321,57 @@ export class DocumentPublishing {
             throw new Error(
               'The destination changed. Prepare the draft again.',
             );
-          const token = storedToken(
-            app.secretStorage.getSecret(this.secretId(config)),
-            origin,
-          );
-          const result = await sendDraft(
-            origin,
-            token,
-            upload,
-            async (options) => {
-              const response = await requestUrl({ ...options, throw: false });
-              return {
-                status: response.status,
-                json: response.json as unknown,
-              };
-            },
-          );
-          if (!this.disposed) {
-            new Notice(
-              'Private draft sent. Review and publish it on the site.',
-            );
-            this.open(origin + result.reviewPath);
+          // Rebuild before the first metadata write so changed outgoing scope needs review.
+          for (const note of notes) {
+            const fresh = await prepareNote(source, note.file, note.id, true);
+            if (fresh.originalHash !== note.originalHash || fresh.fingerprint !== note.fingerprint) throw new Error('The note or an attachment changed. Cancel and prepare the send again.');
           }
+          let sent = 0;
+          let reviewPath = '/collection?type=documents';
+          try {
+            for (const note of notes) {
+              if (this.disposed || config.tokenOrigin !== origin || siteOrigin(config.site) !== origin) throw new Error('The destination changed. Prepare the draft again.');
+              const entry = app.vault.getFileByPath(normalizePath(note.file.path));
+              if (!entry) throw new Error(`Note unavailable: ${note.file.path}`);
+              const currentMetadata = noteMetadata(await source.text(note.file));
+              if (currentMetadata.metadata['fretzee-id'] !== note.id || currentMetadata.metadata['fretzee-type'] !== 'document') {
+                await app.fileManager.processFrontMatter(entry, (frontmatter: unknown) => {
+                  const values = record(frontmatter);
+                  const current = record(values.fretzee);
+                  const identity = values['fretzee-id'] ?? current.id;
+                  if (identity !== undefined && identity !== note.id) throw new Error('The note identity changed. Prepare the send again.');
+                  values['fretzee-type'] = 'document'; values['fretzee-id'] = note.id;
+                  const legacy = { ...current }; delete legacy.id;
+                  if (Object.keys(legacy).length) values.fretzee = legacy;
+                  else delete values.fretzee;
+                });
+              }
+              const fresh = await prepareNote(source, note.file, note.id, true);
+              if (fresh.fingerprint !== note.fingerprint) throw new Error('The reviewed content changed. Prepare the send again.');
+              note.originalHash = fresh.originalHash;
+              const token = storedToken(app.secretStorage.getSecret(this.secretId(config)), origin);
+              const result = await sendDraft(origin, token, fresh.upload, async (options) => {
+                for (let attempt = 0; ; attempt++) {
+                  if (this.disposed || config.tokenOrigin !== origin || siteOrigin(config.site) !== origin) throw new Error('Sending stopped because the plugin or destination changed.');
+                  const response = await requestUrl({ ...options, throw: false });
+                  if (response.status !== 429 || attempt >= 6) return { status: response.status, json: response.json as unknown };
+                  new Notice('Waiting for the upload rate limit. Completed notes are already saved.');
+                  await new Promise(resolve => documentWindow(app.workspace.containerEl.ownerDocument).setTimeout(resolve, 5000));
+                }
+              });
+              const data = record(await this.plugin.loadData());
+              const publishing = record(data.publishing);
+              const state = record(publishing.sendState);
+              await this.plugin.saveData({ ...data, publishing: { ...publishing, sendState: { ...state, [origin]: { ...record(state[origin]), [note.id]: { documentId: result.id, fingerprint: fresh.fingerprint, sentAt: Date.now() } } } } });
+              sent++;
+              reviewPath = result.reviewPath;
+              new Notice(`Sent ${sent}/${notes.length} document containers as private drafts.`);
+            }
+          } catch (error) {
+            new Notice(`${sent}/${notes.length} document containers sent. Successful sends are preserved; retrying unchanged notes does not create new revisions.`);
+            throw error;
+          }
+          if (!this.disposed) this.open(origin + (notes.length === 1 ? reviewPath : '/collection?type=documents'));
         },
         () => {
           this.confirmation = undefined;
@@ -317,6 +387,8 @@ export class DocumentPublishing {
   /** Invalidate pending preparation and close confirmations when disabled. */
   dispose(): void {
     this.disposed = true;
+    this.rootPrompt?.close();
+    this.rootPrompt = undefined;
     this.confirmation?.close();
     this.confirmation = undefined;
   }

@@ -68,7 +68,10 @@ export function parseExcerptConfiguration(source: string): ExcerptConfiguration 
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected a tablature JSON object.');
   const record = value as Record<string, unknown>;
-  const file = normalizeVaultPath(record.file);
+  if (typeof record.file !== 'string' || !record.file.trim() || /[:\\]/.test(record.file) || record.file.startsWith('/') || [...record.file].some(character => character.charCodeAt(0) < 32) || record.file.split('/').some(part => !part)) {
+    throw new Error('File must be a vault path or a path relative to the note.');
+  }
+  const file = record.file.normalize('NFC');
   const track = record.track ?? 1;
   if (typeof track !== 'number' || !Number.isSafeInteger(track) || track < 1) throw new Error('Track must be a number starting at 1.');
   if (typeof record.bars !== 'string') throw new Error('Measures must be a string such as "1-8".');
@@ -90,8 +93,22 @@ export function parseExcerptConfiguration(source: string): ExcerptConfiguration 
 }
 
 /** Read only a supported file in the active vault; never resolve through network or OS paths. */
-export async function loadVaultScore(app: App, path: string): Promise<model.Score> {
-  const canonicalPath = normalizeVaultPath(path);
+export function resolveScorePath(app: App, reference: string, sourcePath = ''): string {
+  if (!sourcePath) return normalizeVaultPath(reference);
+  const linked = app.metadataCache.getFirstLinkpathDest(reference, sourcePath);
+  if (linked) return normalizeVaultPath(linked.path);
+  const parts = sourcePath.split('/').slice(0, -1);
+  for (const part of reference.split('/')) {
+    if (part === '.') continue;
+    if (part === '..') { if (!parts.length) throw new Error('File path escapes the vault.'); parts.pop(); }
+    else parts.push(part);
+  }
+  return normalizeVaultPath(parts.join('/'));
+}
+
+/** Read the exact resolved vault score without changing its bytes. */
+export async function loadVaultScore(app: App, path: string, sourcePath = ''): Promise<model.Score> {
+  const canonicalPath = resolveScorePath(app, path, sourcePath);
   const file = app.vault.getAbstractFileByPath(canonicalPath);
   if (!(file instanceof TFile)) throw new Error(`Guitar Pro file not found in the vault: ${path}`);
   if (!isGuitarProFile(file)) throw new Error('Choose a Guitar Pro file (.gp, .gp3, .gp4, .gp5, or .gpx).');

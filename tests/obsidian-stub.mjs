@@ -1,3 +1,7 @@
+import yaml from 'js-yaml';
+import { webcrypto } from 'node:crypto';
+export const parseYaml = yaml.load;
+export const stringifyYaml = value => yaml.dump(value, { lineWidth: -1 });
 export class Plugin {
   constructor() {
     const provided = globalThis.fretzeeTestApp || {};
@@ -89,6 +93,7 @@ export function normalizePath(path) {
 /** Install the host's cross-window DOM helpers into a fresh jsdom window. */
 export function installHostDom(dom) {
   const { window } = dom;
+  Object.defineProperty(window.crypto, 'subtle', { value: webcrypto.subtle });
   Object.defineProperty(window.document, 'win', { value: window });
   window.createEl = tag => window.document.createElement(tag);
   window.createDiv = () => window.document.createElement('div');
