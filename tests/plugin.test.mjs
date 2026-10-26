@@ -8,7 +8,7 @@ test('registers the diagram and tablature languages and insertion commands', () 
   const plugin = new FretzeePlugin();
   plugin.onload();
   assert.deepEqual([...plugin.processors.keys()], ['fretzee', 'fretzee_sheet', 'tablature', 'chords']);
-  assert.deepEqual(plugin.commands.map(command => command.id).sort(), ['insert-diagram', 'insert-tablature']);
+  assert.deepEqual(plugin.commands.map(command => command.id).sort(), ['insert-diagram', 'insert-tablature', 'open-documents', 'send-active-note']);
 });
 
 test('inserts a fenced example with paragraph boundaries and reports success', () => {

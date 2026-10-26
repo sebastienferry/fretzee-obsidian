@@ -48,7 +48,7 @@ test('parses exact vault paths, one-based tracks, inclusive ranges and notation'
 });
 
 test('rejects non-vault paths, invalid selections and oversized configurations', () => {
-  for (const file of ['../x.gp', '/tmp/x.gp', 'https://example.com/x.gp', 'file:///x.gp', 'C:\\x.gp', 'a//x.gp', './x.gp']) {
+  for (const file of ['/tmp/x.gp', 'https://example.com/x.gp', 'file:///x.gp', 'C:\\x.gp', 'a//x.gp', 'a//x.gp']) {
     assert.throws(() => parseExcerptConfiguration(JSON.stringify({ ...configuration, file })), /path/);
   }
   for (const bars of ['0-2', '2-1', '-1', '1-129', '1.2-3', '1-2oops', '1e2']) assert.throws(() => parseBars(bars));
@@ -253,4 +253,11 @@ test('explicit notation profiles preserve imported staff visibility and musical 
     assert.ok(renderExcerpt(score, { ...configuration, profile }, 800).length);
     assert.deepEqual(score.tracks.map(track => track.staves.map(staff => [staff.showTablature, staff.showStandardNotation, staff.showSlash, staff.showNumbered])), before);
   }
+});
+
+test('note-relative Guitar Pro references resolve through the vault and render the selected excerpt',async()=>{
+ const vault=vaultApp();vault.app.metadataCache={getFirstLinkpathDest:(reference,sourcePath)=>reference==='../../Tablatures/Exercise.gp'&&sourcePath==='raw/Notes/Folder/Note.md'?vault.file:null};
+ const score=await loadVaultScore(vault.app,'../../Tablatures/Exercise.gp','raw/Notes/Folder/Note.md');
+ assert.ok(renderExcerpt(score,{...configuration,file:'../../Tablatures/Exercise.gp'},800).length);
+ await assert.rejects(loadVaultScore(vault.app,'../../../../secret.gp','raw/Note.md'),/escapes/);
 });

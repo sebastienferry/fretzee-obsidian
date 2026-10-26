@@ -1,8 +1,8 @@
 {
   "name": "fretzee-obsidian",
-  "version": "0.4.1",
+  "version": "0.7.0",
   "private": true,
-  "description": "Render Fretzee diagrams, sheets, chord progressions, and vault Guitar Pro excerpts in Obsidian notes.",
+  "description": "Render musical diagrams and tablature offline, and send selected notes to Fretzee as private drafts.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@coderline/alphatab": "1.8.4",
-    "fretzee": "0.3.6"
+    "fretzee": "0.3.6",
+    "mdast-util-from-markdown": "2.0.2"
   },
   "engines": {
     "node": "^24.15.0 || >=26.0.0"

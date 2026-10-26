@@ -2,7 +2,9 @@
 
 Render Fretzee JSON diagrams, composite sheets, chord progressions and selected Guitar Pro excerpts directly in your
 Obsidian notes. Rendering works offline: the diagram engine, AlphaTab and its
-notation font are bundled. No Studio account, server, API key, or CDN is needed.
+notation font are bundled. Rendering needs no Studio account, server, API key, or CDN.
+
+The same plugin optionally sends selected notes or folders to Fretzee as private drafts. Publishing requires a compatible Studio server and an upload token; it is independent of offline rendering. No second plugin is required.
 
 ## Install or update
 
@@ -11,14 +13,40 @@ notation font are bundled. No Studio account, server, API key, or CDN is needed.
    `styles.css`. Keep the accompanying license files.
 2. Restart Obsidian, open **Settings → Community plugins**, allow community
    plugins if needed, and enable **Fretzee**.
-3. To update, disable Fretzee, replace its plugin folder with the new `dist/fretzee`
-   folder, restart Obsidian, and enable it again. Your notes and source files are
+3. To update, disable Fretzee, copy the new package files into the existing plugin
+   folder while preserving `data.json`, restart Obsidian, and enable it again. Your notes and source files are
    unchanged by this process.
 
 The first public release targets **Obsidian desktop 1.14.5 or newer**. Mobile
 support is not advertised until it has been verified on devices. The plugin is
 not yet listed in the Community directory; a GitHub release does not imply
 Obsidian approval. See [submission preparation](docs/submission.md).
+
+## Send documents to Fretzee
+
+The **0.7.0 feature build** sends one editorial main note and its directory resources. It is not included in the earlier public 0.4.1 release. Build with `npm ci && npm run check && npm run package`, then install `dist/fretzee-0.7.0.zip` into the existing plugin folder, preserving `data.json`. No second plugin is required.
+
+1. In Studio, open **My Collection → Connect Obsidian**, create a named upload token and copy it once.
+2. In **Settings → Fretzee**, save the site origin, then save the token. HTTPS is required except for loopback HTTP development sites. Tokens stay in Obsidian SecretStorage, bound to that site; they never enter frontmatter or synced settings.
+3. Define the editorial main note with flat text properties:
+
+```yaml
+---
+fretzee-type: document
+fretzee-id: 12345678-1234-4234-8234-123456789abc
+---
+```
+
+The plugin generates the ID on confirmed first send. Existing nested `fretzee.id` values are recognized and migrated to the same flat ID only on confirmed sending; unrelated metadata and note bodies are retained. Flat properties are supported by Obsidian's visual Properties editor; no nested object is created.
+
+4. Run **Fretzee: Send current note’s document as a private draft**, or right-click a note, resource or directory and choose **Send to Fretzee as a private draft**. If an enclosing directory already has a marked main note, that note owns the upload. A selected lyrics file remains a resource. If none exists, the plugin offers a main-note choice, defaulting to the selected Markdown note. Choosing a main note prepares the review; metadata is written only after the final send confirmation. Cancelling either dialog changes nothing.
+5. Review the main note and every outgoing file. One directory becomes one private container: `note.md` is the editorial entry; all other visible files, including supplementary Markdown, are resources under `assets/`. Directly referenced binary attachments outside the directory may be included. Markdown outside the directory is not traversed. Multiple marked main notes inside one container fail rather than silently choosing a root; use a dedicated directory for each container.
+6. Only the exported copies have their links rebased. Resources can link to included resources or back to the main note. Source bodies stay unchanged. There is no resource file-type allowlist: any extension and extensionless files are accepted. Hidden, unavailable or oversized files stop preparation. Remote URLs are not downloaded. HX and Helix presets (`.hx`, `.hlx`, case-insensitive) are supported resources: their original bytes are sent and they can be downloaded from Fretzee. No preset preview or conversion is required.
+7. Review in **My Collection**, organize the container independently of vault paths, then explicitly publish on the site. The reader opens the main note and labels supplementary Markdown as attached resources. Updates preserve identity and Collection placement without automatically replacing the publication. Move excessive imports to Document trash and restore them before sending the same identity again.
+
+A container is limited to 200 files, 10 MiB per file and 20 MiB decoded total. Its acknowledged remote ID, fingerprint and send time remain in per-origin plugin state. Retrying unchanged content creates no duplicate revision. There is no background synchronization, web editing or automatic deletion of existing uploads. Earlier folder and individual-note snapshots remain available until their owner removes them.
+
+The website renders diagrams, sheets, chord grids and Guitar Pro excerpts with the plugin's engines, and provides H2 section navigation. Preview hides frontmatter; source downloads preserve the exported metadata. Playback and note transclusion remain unavailable.
 
 ## Insert a Guitar Pro excerpt
 
@@ -44,7 +72,7 @@ The inserted block remains editable JSON:
 ```
 ````
 
-`file` is the exact path from the vault root, including spaces and accents. It is
+`file` is a vault-root path or a path relative to the note (for example `../Scores/song.gp`), including spaces and accents. It is
 not an absolute computer path, a URL, a wikilink, or a Studio file ID. Canonically
 equivalent composed/decomposed accents in paths are normalized using Obsidian's
 public API; source files and existing notes are not renamed or rewritten. Track
@@ -219,7 +247,7 @@ sufficient contrast for your vault's theme.
 
 Audio playback, nested sheets, external JSON files, automatic SVG file export,
 Studio ID lookups and conversion of tablature notes into fretboard diagrams are
-outside this version. The plugin implements no network requests or telemetry.
+outside this version. Offline rendering performs no network requests. Only an explicitly confirmed document send contacts the configured site; there is no telemetry.
 
 ## Development
 

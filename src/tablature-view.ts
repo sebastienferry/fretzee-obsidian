@@ -1,13 +1,13 @@
 import { documentWindow } from './dom';
 import { MarkdownRenderChild, normalizePath, type App } from 'obsidian';
-import { loadVaultScore, parseExcerptConfiguration, renderExcerpt } from './tablature';
+import { loadVaultScore, parseExcerptConfiguration, renderExcerpt, resolveScorePath } from './tablature';
 
 /** Own vault listeners and prevent stale async reads from updating an unloaded block. */
 export class TablatureView extends MarkdownRenderChild {
   private revision = 0;
   private stopped = false;
 
-  constructor(container: HTMLElement, private readonly app: App, private readonly source: string) {
+  constructor(container: HTMLElement, private readonly app: App, private readonly source: string, private readonly sourcePath = '') {
     super(container);
   }
 
@@ -16,7 +16,7 @@ export class TablatureView extends MarkdownRenderChild {
     this.stopped = false;
     const refresh = (path: string) => {
       try {
-        if (parseExcerptConfiguration(this.source).file === normalizePath(path)) void this.refresh();
+        if (resolveScorePath(this.app, parseExcerptConfiguration(this.source).file, this.sourcePath) === normalizePath(path)) void this.refresh();
       } catch { /* The initial render already reports invalid configuration. */ }
     };
     this.registerEvent(this.app.vault.on('modify', file => refresh(file.path)));
@@ -42,7 +42,7 @@ export class TablatureView extends MarkdownRenderChild {
     container.textContent = 'Loading tablature…';
     try {
       const config = parseExcerptConfiguration(this.source);
-      const score = await loadVaultScore(this.app, config.file);
+      const score = await loadVaultScore(this.app, config.file, this.sourcePath);
       if (this.stopped || revision !== this.revision) return;
       const chunks = renderExcerpt(score, config, container.clientWidth);
       const fragment = documentWindow(doc).createFragment();

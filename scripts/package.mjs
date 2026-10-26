@@ -1,4 +1,5 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { markdownNotices } from './notices.mjs';
 import { execFileSync } from 'node:child_process';
 
 const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
@@ -12,6 +13,7 @@ for (const file of ['main.js', 'manifest.json', 'styles.css', 'LICENSE', 'THIRD_
   await cp(file, `${destination}/${file}`);
 }
 await mkdir(`${destination}/licenses`);
+await writeFile(`${destination}/licenses/Markdown-MIT.txt`, await markdownNotices());
 await cp('node_modules/@coderline/alphatab/LICENSE', `${destination}/licenses/AlphaTab-MPL-2.0.txt`);
 const alphaTabSource = await readFile('node_modules/@coderline/alphatab/dist/alphaTab.core.mjs', 'utf8');
 const notices = alphaTabSource.slice(0, alphaTabSource.indexOf('*/') + 2);

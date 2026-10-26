@@ -1,10 +1,10 @@
 {
   "id": "fretzee",
   "name": "Fretzee",
-  "version": "0.4.1",
+  "version": "0.7.0",
   "minAppVersion": "1.14.5",
-  "description": "Render Fretzee diagrams, sheets, chord progressions, and vault Guitar Pro excerpts in Obsidian notes.",
-  "author": "Sébastien Ferry",
+  "description": "Render musical diagrams and tablature offline, and send selected notes to Fretzee as private drafts.",
+  "author": "S\u00e9bastien Ferry",
   "authorUrl": "https://github.com/sebastienferry",
   "isDesktopOnly": true
 }

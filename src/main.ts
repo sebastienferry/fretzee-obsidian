@@ -4,17 +4,19 @@ import { renderChords } from './chords';
 import { EXAMPLE_BLOCK } from './example';
 import { TablatureView } from './tablature-view';
 import { TablaturePicker } from './tablature-picker';
+import { DocumentPublishing } from './publishing';
 
 /** Offline Fretzee SVG rendering for fenced code blocks in Obsidian notes. */
 export default class FretzeePlugin extends Plugin {
   private picker?: TablaturePicker;
+  private publishing?: DocumentPublishing;
   /** Register processors and an editor command; Obsidian disposes them on unload. */
   onload(): void {
     for (const language of ['fretzee', 'fretzee_sheet']) {
       this.registerMarkdownCodeBlockProcessor(language, (source, element) => { renderCodeBlock(source, element); });
     }
     this.registerMarkdownCodeBlockProcessor('tablature', (source, element, context) => {
-      context.addChild(new TablatureView(element, this.app, source));
+      context.addChild(new TablatureView(element, this.app, source, context.sourcePath));
     });
     this.registerMarkdownCodeBlockProcessor('chords', renderChords);
     this.addCommand({
@@ -29,6 +31,8 @@ export default class FretzeePlugin extends Plugin {
         this.picker.open();
       },
     });
+    this.publishing = new DocumentPublishing(this);
+    this.publishing.register();
     this.addCommand({
       id: 'insert-diagram',
       name: 'Insert example diagram',
@@ -46,6 +50,6 @@ export default class FretzeePlugin extends Plugin {
     });
   }
 
-  /** Close any open picker when the plugin is disabled. */
-  onunload(): void { this.picker?.close(); }
+  /** Close picker and pending publishing confirmation when disabled. */
+  onunload(): void { this.picker?.close(); this.publishing?.dispose(); }
 }
